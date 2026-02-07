@@ -6,8 +6,7 @@ A Python implementation of the Rydberg–Klein–Rees method and radial Schrödi
 
 RKR:
 
-- [ ] Implement iterative subdivision integration for $f$ and $g$
-- [ ] Use Gauss–Mehler and Gauss–Legendre quadrature where appropriate
+- [x] Use Tellinghuisen's form of the $f$ and $g$ integrals
 
 Radial:
 
@@ -17,7 +16,7 @@ Radial:
 
 ## License and Copyright
 
-Copyright (C) 2025 Nathan G. Phillips
+Copyright (C) 2025-2026 Nathan G. Phillips
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

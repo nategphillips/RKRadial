@@ -1,14 +1,14 @@
 [project]
-name = "rkr"
+name = "RKRadial"
 version = "0.1.0"
-description = "Add your description here"
+description = "Implements the Rydberg–Klein–Rees method and solves the radial Schrödinger equation."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14.2"
 dependencies = [
-    "matplotlib>=3.10.6",
-    "numpy>=2.3.3",
-    "scienceplots>=2.1.1",
-    "scipy>=1.16.2",
+    "matplotlib>=3.10.8",
+    "numpy>=2.4.1",
+    "scienceplots>=2.2.0",
+    "scipy>=1.17.0",
 ]
 
 [tool.basedpyright]

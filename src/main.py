@@ -1,7 +1,7 @@
 # module main.py
 """Uses the Rydberg-Klein-Rees method to obtain the internuclear potential V(r)."""
 
-# Copyright (C) 2025 Nathan G. Phillips
+# Copyright (C) 2025-2026 Nathan G. Phillips
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import math
 from collections.abc import Callable
 
 import matplotlib.pyplot as plt
@@ -29,7 +30,7 @@ from scipy.optimize import curve_fit
 from scipy.sparse import diags_array
 
 plt.style.use(["science", "grid"])
-plt.rcParams.update({"font.size": 22})
+plt.rcParams.update({"font.size": 18})
 
 # Equal to 0.5 * ћ^2 in the appropriate units. Given in "RKR1" by LeRoy.
 hbar2_over_2: float = 16.857629206  # [amu * Å^2 * cm^-1]
@@ -49,36 +50,63 @@ g_consts_lo: list[float] = [0, 1580.193, -11.981, 0.04747]
 b_consts_lo: list[float] = [1.4376766, -0.01593]
 
 
-def g(v: int, g_consts: list[float]) -> float:
-    x: float = v + 0.5
+def g(v: int | float, g_consts: list[float]) -> float:
+    x = v + 0.5
 
     return sum(val * x**idx for idx, val in enumerate(g_consts))
 
 
-def b(v: int, b_consts: list[float]) -> float:
-    x: float = v + 0.5
+def b(v: int | float, b_consts: list[float]) -> float:
+    x = v + 0.5
 
     return sum(val * x**idx for idx, val in enumerate(b_consts))
 
 
-def integrand_f(v: int, upper_bound: int, g_consts: list[float]) -> float:
-    return 1.0 / np.sqrt(g(upper_bound, g_consts) - g(v, g_consts))
+def weight_fn(v_prime: float, v: int, g_consts: list[float]):
+    # The weight function proposed by Tellinghuisen.
+    # w(v') = sqrt(v - v') / sqrt(G(v) - G(v'))
+    return math.sqrt(v - v_prime) / math.sqrt(g(v, g_consts) - g(v_prime, g_consts))
 
 
-def integrand_g(v: int, upper_bound: int, g_consts: list[float], b_consts: list[float]) -> float:
-    return b(v, b_consts) / np.sqrt(g(upper_bound, g_consts) - g(v, g_consts))
+def f_integral_weighted(v: int, v_min: float, g_consts: list[float]) -> float:
+    # f(v) = 2 * sqrt{hbar^2 / 2μ} * ∫_0^sqrt{v - v_min} w(v - u^2) du
+    upper_bound = math.sqrt(v - v_min)
+
+    def integrand_f(u: float) -> float:
+        # u = sqrt(v - v')
+        v_prime = v - u**2
+        return weight_fn(v_prime, v, g_consts)
+
+    return 2.0 * math.sqrt(hbar2_over_2 / mass) * quad(integrand_f, 0.0, upper_bound)[0]
+
+
+def g_integral_weighted(
+    v: int, v_min: float, g_consts: list[float], b_consts: list[float]
+) -> float:
+    # g(v) = 2 * sqrt{2μ / hbar^2} * ∫_0^sqrt{v - v_min} B(v - u^2) * w(v - u^2) du
+    upper_bound = math.sqrt(v - v_min)
+
+    def integrand_g(u: float) -> float:
+        # u = sqrt(v - v')
+        v_prime = v - u**2
+        return b(v_prime, b_consts) * weight_fn(v_prime, v, g_consts)
+
+    return 2.0 * math.sqrt(mass / hbar2_over_2) * quad(integrand_g, 0.0, upper_bound)[0]
 
 
 def rkr(v: int, g_consts: list[float], b_consts: list[float]) -> tuple[float, float]:
-    f: float = np.sqrt(hbar2_over_2 / mass) * quad(integrand_f, -0.5, v, args=(v, g_consts))[0]
-    g: float = (
-        np.sqrt(mass / hbar2_over_2) * quad(integrand_g, -0.5, v, args=(v, g_consts, b_consts))[0]
-    )
+    v_min = -0.5
 
-    sqrt_term: float = np.sqrt(f**2 + f / g)
+    # With epsabs=1e-12 and epsrel=1e-12, it takes between 300 and 600 evaluations for the
+    # non-weighted integrals to converge. With the same tolerances, the weighted integrals take only
+    # around 20 iterations.
+    f = f_integral_weighted(v, v_min, g_consts)
+    g = g_integral_weighted(v, v_min, g_consts, b_consts)
 
-    r_min: float = sqrt_term - f  # [Å]
-    r_max: float = sqrt_term + f  # [Å]
+    sqrt_term = math.sqrt(f**2 + f / g)
+
+    r_min = sqrt_term - f  # [Å]
+    r_max = sqrt_term + f  # [Å]
 
     return r_min, r_max
 
@@ -95,17 +123,12 @@ def radial_schrodinger(
     # Construct the kinetic energy operator via a second-order central finite difference. A sparse
     # array is used to save space.
     kinetic_term: NDArray[np.float64] = (-hbar2_over_2 / (mass * dr**2)) * diags_array(
-        [1, -2, 1],
+        [1.0, -2.0, 1.0],
         offsets=[-1, 0, 1],  # pyright: ignore[reportArgumentType]
         shape=(dim, dim),
     ).toarray()
 
-    # The rotational operator. Not sure if this is needed if I'm only interested in the vibrational
-    # wavefunctions since J = 0 will cancel it out anyway. Might want to check out
-    # https://onlinelibrary.wiley.com/doi/10.1155/2018/1487982.
-    rotational_term: NDArray[np.float64] = (hbar2_over_2 / (mass * r**2)) * j_qn * (j_qn + 1)
-
-    hamiltonian = kinetic_term + np.diag(rotational_term + potential_term)
+    hamiltonian = kinetic_term + np.diag(potential_term)
 
     # The Hamiltonian will always be Hermitian, so the use of eigh is warranted here.
     eigvals, eigvecs = eigh(hamiltonian)
@@ -116,18 +139,16 @@ def radial_schrodinger(
     for i in range(v_max):
         wavefn: NDArray[np.float64] = eigvecs[:, i]
         norm: float = trapezoid(wavefn**2, r)
-        norm_wavefns.append(wavefn / np.sqrt(norm))
+        norm_wavefns.append(wavefn / math.sqrt(norm))
 
     return eigvals[:v_max], norm_wavefns
 
 
 def plot_extrapolation(
-    fit_fn: Callable,
-    xdata: NDArray[np.float64],
-    ydata: NDArray[np.float64],
+    fit_fn: Callable, xdata: NDArray[np.float64], ydata: NDArray[np.float64], fit_type: str
 ) -> NDArray[np.float64]:
     params, _, info, _, _ = curve_fit(fit_fn, xdata, ydata, maxfev=100000, full_output=True)
-    print(f"Fit took {info['nfev']} iterations.")
+    print(f"The {fit_type} fit took {info['nfev']} iterations.")
 
     return params
 
@@ -148,7 +169,7 @@ def extrapolate_inner(
             case "inv":
                 return a / x**b
 
-    params: NDArray[np.float64] = plot_extrapolation(fit, inner_points, inner_energy)
+    params: NDArray[np.float64] = plot_extrapolation(fit, inner_points, inner_energy, "inner")
 
     return params, fit
 
@@ -176,7 +197,7 @@ def extrapolate_outer(
             case "mix":
                 return dissociation - a * x**b * np.exp(-c * x)
 
-    params: NDArray[np.float64] = plot_extrapolation(fit, outer_points, outer_energy)
+    params: NDArray[np.float64] = plot_extrapolation(fit, outer_points, outer_energy, "outer")
 
     return params, fit
 
@@ -207,6 +228,7 @@ def get_potential(
     rkr_maxs: NDArray[np.float64],
     energies: NDArray[np.float64],
     g_consts: list[float],
+    j_qn: int,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     rkr_all: NDArray[np.float64] = np.concatenate((rkr_mins, rkr_maxs))
     energies_all: NDArray[np.float64] = np.concatenate((energies, energies))
@@ -235,6 +257,9 @@ def get_potential(
     potential[mmask] = cubic_spline(r[mmask])
     potential[rmask] = fit_outer(r[rmask], *params_outer)
 
+    # Add centrifugal J dependence to the rotationless potential.
+    potential += (hbar2_over_2 / (mass * r**2)) * j_qn * (j_qn + 1)
+
     plt.plot(r[lmask], potential[lmask], color="blue")
     plt.plot(r[mmask], potential[mmask], color="black")
     plt.plot(r[rmask], potential[rmask], color="red")
@@ -245,6 +270,8 @@ def get_potential(
 def main() -> None:
     v_max_up: int = 16
     v_max_lo: int = 19
+    j_qn_up: int = 0
+    j_qn_lo: int = 0
 
     dim: int = 1000
 
@@ -256,8 +283,12 @@ def main() -> None:
 
     r: NDArray[np.float64] = np.linspace(r_min, r_max, dim)
 
-    r_up, potential_up = get_potential(r, rkr_mins_up, rkr_maxs_up, energies_up, g_consts_up)
-    r_lo, potential_lo = get_potential(r, rkr_mins_lo, rkr_maxs_lo, energies_lo, g_consts_lo)
+    r_up, potential_up = get_potential(
+        r, rkr_mins_up, rkr_maxs_up, energies_up, g_consts_up, j_qn_up
+    )
+    r_lo, potential_lo = get_potential(
+        r, rkr_mins_lo, rkr_maxs_lo, energies_lo, g_consts_lo, j_qn_lo
+    )
 
     eigvals_up, wavefns_up = radial_schrodinger(r_up, v_max_up, potential_up, dim)
     eigvals_lo, wavefns_lo = radial_schrodinger(r_lo, v_max_lo, potential_lo, dim)
@@ -271,7 +302,7 @@ def main() -> None:
         plt.plot(r_lo, psi * scaling_factor + eigvals_lo[i])
 
     plt.xlabel(r"Internuclear Distance, $r$ [$\AA$]")
-    plt.ylabel(r"Vibrational Energy, $G(v)$ [cm$^{-1}$]")
+    plt.ylabel(r"Energy, $E$ [cm$^{-1}$]")
     plt.show()
 
     # Compute Franck-Condon factors and compare with known data from Cheung.
