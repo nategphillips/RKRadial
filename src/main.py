@@ -17,17 +17,21 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import math
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
 import scienceplots  # noqa: F401
-from numpy.typing import NDArray
-from scipy.integrate import quad, trapezoid
+from scipy.integrate import quad, simpson
 from scipy.interpolate import CubicSpline
 from scipy.linalg import eigh
 from scipy.optimize import curve_fit
 from scipy.sparse import diags_array
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from numpy.typing import NDArray
 
 plt.style.use(["science", "grid"])
 plt.rcParams.update({"font.size": 18})
@@ -112,11 +116,7 @@ def rkr(v: int, g_consts: list[float], b_consts: list[float]) -> tuple[float, fl
 
 
 def radial_schrodinger(
-    r: NDArray[np.float64],
-    v_max: int,
-    potential_term: NDArray,
-    dim: int,
-    j_qn: int = 0,
+    r: NDArray[np.float64], v_max: int, potential_term: NDArray, dim: int
 ) -> tuple[NDArray[np.float64], list[NDArray[np.float64]]]:
     dr: float = r[1] - r[0]
 
@@ -138,7 +138,7 @@ def radial_schrodinger(
     # Normalize the wavefunctions ψ(r) such that ∫ ψ'ψ dr = 1.
     for i in range(v_max):
         wavefn: NDArray[np.float64] = eigvecs[:, i]
-        norm: float = trapezoid(wavefn**2, r)
+        norm: float = float(simpson(wavefn**2, r))
         norm_wavefns.append(wavefn / math.sqrt(norm))
 
     return eigvals[:v_max], norm_wavefns
@@ -310,7 +310,7 @@ def main() -> None:
 
     for i in range(v_max_up):
         for j in range(v_max_lo):
-            fcfs[i][j] = np.abs(trapezoid(wavefns_up[i] * wavefns_lo[j], r_up)) ** 2
+            fcfs[i][j] = np.abs(simpson(wavefns_up[i] * wavefns_lo[j], r_up)) ** 2
 
     cheung: NDArray[np.float64] = np.genfromtxt("../data/cheung.csv", delimiter=",")
 
