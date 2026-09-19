@@ -59,7 +59,7 @@ b_consts_up = [0.81902, -0.01206, -5.56e-4]
 b_consts_lo = [1.4376766, -0.01593]
 
 
-def g(v_qn: int | float, g_consts: list[float]) -> float:
+def g(v_qn: float, g_consts: list[float]) -> float:
     """Return the vibrational term value G(v) for a given vibrational quantum number.
 
     Args:
@@ -74,7 +74,7 @@ def g(v_qn: int | float, g_consts: list[float]) -> float:
     return sum(val * x**idx for idx, val in enumerate(g_consts))
 
 
-def b(v_qn: int | float, b_consts: list[float]) -> float:
+def b(v_qn: float, b_consts: list[float]) -> float:
     """Return the rotational term value B(v) for a given vibrational quantum number.
 
     Args:
@@ -329,7 +329,7 @@ def get_rkr_points(
     rkr_maxs = np.empty(v_max)
     energies = np.empty(v_max)
 
-    for v in range(0, v_max):
+    for v in range(v_max):
         r_min, r_max = rkr(v, g_consts, b_consts)
 
         rkr_mins[v] = r_min
@@ -440,7 +440,6 @@ def main() -> None:
 
     plt.xlabel(r"Internuclear Distance, $r$ [$\AA$]")
     plt.ylabel(r"Energy, $E$ [cm$^{-1}$]")
-    plt.show()
 
     # Compute Franck-Condon factors and compare with known data from Cheung.
     fcfs = np.zeros((v_max_up, v_max_lo))
