@@ -3,6 +3,9 @@ name = "RKRadial"
 version = "0.1.0"
 description = "Implements the Rydberg–Klein–Rees method and solves the radial Schrödinger equation."
 readme = "README.md"
+authors = [
+    { name = "nategphillips", email = "30729007+nategphillips@users.noreply.github.com" }
+]
 requires-python = ">=3.14"
 dependencies = [
     "matplotlib>=3.11.2",
@@ -10,9 +13,6 @@ dependencies = [
     "scienceplots>=2.2.2",
     "scipy>=1.18.1",
 ]
-
-[tool.basedpyright]
-typeCheckingMode = "basic"
 
 [tool.ruff]
 line-length = 100
